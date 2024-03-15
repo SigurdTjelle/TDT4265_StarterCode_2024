@@ -36,9 +36,7 @@ def get_device():
     device = (
         "cuda"
         if torch.cuda.is_available()
-        else "mps"
-        if torch.backends.mps.is_available()
-        else "cpu"
+        else "mps" if torch.backends.mps.is_available() else "cpu"
     )
     return device
 
@@ -95,6 +93,12 @@ def plot_loss(
     """
     global_steps = list(loss_dict.keys())
     loss = list(loss_dict.values())
+    loss = [
+        loss_val.cpu().numpy() if isinstance(loss_val, torch.Tensor) else loss_val
+        for loss_val in loss
+    ]
+    print(f"global_steps[0] type: {type(global_steps[0])}")
+    print(f"loss[0] type: {type(loss[0])}")
     if npoints_to_average == 1 or not plot_variance:
         plt.plot(global_steps, loss, label=label)
         return
@@ -110,6 +114,7 @@ def plot_loss(
         mean_loss.append(np.mean(points))
         loss_std.append(np.std(points))
         steps.append(step)
+
     plt.plot(steps, mean_loss, label=f"{label} (mean over {npoints_to_average} steps)")
     plt.fill_between(
         steps,
