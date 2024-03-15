@@ -7,9 +7,10 @@ import pathlib
 
 
 def compute_loss_and_accuracy(
-        dataloader: torch.utils.data.DataLoader,
-        model: torch.nn.Module,
-        loss_criterion: torch.nn.modules.loss._Loss):
+    dataloader: torch.utils.data.DataLoader,
+    model: torch.nn.Module,
+    loss_criterion: torch.nn.modules.loss._Loss,
+):
     """
     Computes the average loss and the accuracy over the whole dataset
     in dataloader.
@@ -20,34 +21,56 @@ def compute_loss_and_accuracy(
     Returns:
         [average_loss, accuracy]: both scalar.
     """
+
+    # Variables for calculating
+    loss_sum = 0
     average_loss = 0
     accuracy = 0
+    iterations = 0
+    right_guesses = 0
+    total_guesses = 0
+
     # TODO: Implement this function (Task  2a)
+
     with torch.no_grad():
-        for (X_batch, Y_batch) in dataloader:
+        for X_batch, Y_batch in dataloader:
             # Transfer images/labels to GPU VRAM, if possible
             X_batch = utils.to_cuda(X_batch)
             Y_batch = utils.to_cuda(Y_batch)
             # Forward pass the images through our model
             output_probs = model(X_batch)
 
-            # Compute Loss and Accuracy
+            # Calculates the loss over the hole batch
+            loss = loss_criterion(output_probs, Y_batch)  # calculates loss
+            loss_sum += loss  # sums the losses for all batches
 
-            # Predicted class is the max index over the column dimension
+            _, guesses = torch.max(output_probs, 1)  # find array with right guesses
+            right_guesses += (
+                (guesses == Y_batch).sum().item()
+            )  # compares answears with guesses and gives us the sum
+            total_guesses += guesses.size()[0]  # number of total guesses
+            iterations += 1
+            # Compute Loss and Accuracy
+    accuracy = right_guesses / total_guesses
+    average_loss = loss_sum / iterations
+
+    # Predicted class is the max index over the column dimension
     return average_loss, accuracy
 
 
 class Trainer:
 
-    def __init__(self,
-                 batch_size: int,
-                 learning_rate: float,
-                 early_stop_count: int,
-                 epochs: int,
-                 model: torch.nn.Module,
-                 dataloaders: typing.List[torch.utils.data.DataLoader]):
+    def __init__(
+        self,
+        batch_size: int,
+        learning_rate: float,
+        early_stop_count: int,
+        epochs: int,
+        model: torch.nn.Module,
+        dataloaders: typing.List[torch.utils.data.DataLoader],
+    ):
         """
-            Initialize our trainer class.
+        Initialize our trainer class.
         """
         self.batch_size = batch_size
         self.learning_rate = learning_rate
@@ -63,8 +86,7 @@ class Trainer:
         print(self.model)
 
         # Define our optimizer. SGD = Stochastich Gradient Descent
-        self.optimizer = torch.optim.SGD(self.model.parameters(),
-                                         self.learning_rate)
+        self.optimizer = torch.optim.SGD(self.model.parameters(), self.learning_rate)
 
         # Load our dataset
         self.dataloader_train, self.dataloader_val, self.dataloader_test = dataloaders
@@ -76,20 +98,17 @@ class Trainer:
 
         # Tracking variables
         self.train_history = dict(
-            loss=collections.OrderedDict(),
-            accuracy=collections.OrderedDict()
-
+            loss=collections.OrderedDict(), accuracy=collections.OrderedDict()
         )
         self.validation_history = dict(
-            loss=collections.OrderedDict(),
-            accuracy=collections.OrderedDict()
+            loss=collections.OrderedDict(), accuracy=collections.OrderedDict()
         )
         self.checkpoint_dir = pathlib.Path("checkpoints")
 
     def validation_step(self):
         """
-            Computes the loss/accuracy for all three datasets.
-            Train, validation and test.
+        Computes the loss/accuracy for all three datasets.
+        Train, validation and test.
         """
         self.model.eval()
         validation_loss, validation_acc = compute_loss_and_accuracy(
@@ -104,19 +123,20 @@ class Trainer:
             f"Global step: {self.global_step:>6}",
             f"Validation Loss: {validation_loss:.2f}",
             f"Validation Accuracy: {validation_acc:.3f}",
-            sep=", ")
+            sep=", ",
+        )
         self.model.train()
 
     def should_early_stop(self):
         """
-            Checks if validation loss doesn't improve over early_stop_count epochs.
+        Checks if validation loss doesn't improve over early_stop_count epochs.
         """
         # Check if we have more than early_stop_count elements in our validation_loss list.
         val_loss = self.validation_history["loss"]
         if len(val_loss) < self.early_stop_count:
             return False
         # We only care about the last [early_stop_count] losses.
-        relevant_loss = list(val_loss.values())[-self.early_stop_count:]
+        relevant_loss = list(val_loss.values())[-self.early_stop_count :]
         first_loss = relevant_loss[0]
         if first_loss == min(relevant_loss):
             print("Early stop criteria met")
@@ -158,6 +178,7 @@ class Trainer:
         """
         Trains the model for [self.epochs] epochs.
         """
+
         def should_validate_model():
             return self.global_step % self.num_steps_per_val == 0
 
@@ -179,7 +200,7 @@ class Trainer:
     def save_model(self):
         def is_best_model():
             """
-                Returns True if current model has the lowest validation loss
+            Returns True if current model has the lowest validation loss
             """
             val_loss = self.validation_history["loss"]
             validation_losses = list(val_loss.values())
@@ -194,6 +215,7 @@ class Trainer:
         state_dict = utils.load_best_checkpoint(self.checkpoint_dir)
         if state_dict is None:
             print(
-                f"Could not load best checkpoint. Did not find under: {self.checkpoint_dir}")
+                f"Could not load best checkpoint. Did not find under: {self.checkpoint_dir}"
+            )
             return
         self.model.load_state_dict(state_dict)
