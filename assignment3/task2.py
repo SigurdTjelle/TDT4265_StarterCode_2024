@@ -28,8 +28,20 @@ class ExampleModel(nn.Module):
                 padding=2,
             )
         )
+        self.feature_extractor = nn.Sequential(
+            nn.Conv2d(3, 32, 5, padding=2),
+            nn.MaxPool2d(2, 2),
+            nn.ReLU(),
+            nn.Conv2d(32, 64, 5, padding=2),
+            nn.MaxPool2d(2, 2),
+            nn.ReLU(),
+            nn.Conv2d(64, 128, 5, padding=2),
+            nn.MaxPool2d(2, 2),
+            nn.ReLU(),
+        )
         # The output of feature_extractor will be [batch_size, num_filters, 16, 16]
         self.num_output_features = 32 * 32 * 32
+        self.num_output_features = 128 * 4 * 4
         # Initialize our last fully connected layer
         # Inputs all extracted features from the convolutional layers
         # Outputs num_classes predictions, 1 for each class.
@@ -37,6 +49,9 @@ class ExampleModel(nn.Module):
         # included with nn.CrossEntropyLoss
         self.classifier = nn.Sequential(
             nn.Linear(self.num_output_features, num_classes),
+        )
+        self.classifier = nn.Sequential(
+            nn.Linear(4 * 4 * 128, 64), nn.ReLU(), nn.Linear(64, num_classes)
         )
 
     def forward(self, x):
@@ -47,7 +62,11 @@ class ExampleModel(nn.Module):
         """
         # TODO: Implement this function (Task  2a)
         batch_size = x.shape[0]
-        out = x
+        convModel = self.feature_extractor(x)
+        convModel = convModel.view(-1, self.num_output_features)
+        out = self.classifier(convModel)
+
+        batch_size = x.shape[0]
         expected_shape = (batch_size, self.num_classes)
         assert out.shape == (
             batch_size,
@@ -76,8 +95,6 @@ def create_plots(trainer: Trainer, name: str):
     plt.show()
 
 
-
-
 def main():
     # Set the random generator seed (parameters, shuffling etc).
     # You can try to change this and check if you still get the same result!
@@ -86,7 +103,7 @@ def main():
     epochs = 10
     batch_size = 64
     learning_rate = 5e-2
-    early_stop_count = 4
+    early_stop_count = 3
     dataloaders = load_cifar10(batch_size)
     model = ExampleModel(image_channels=3, num_classes=10)
     trainer = Trainer(
